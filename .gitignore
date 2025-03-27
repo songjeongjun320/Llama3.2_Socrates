@@ -1,8 +1,8 @@
 # Environment files
-/.env
+.env
 
 # Jupyter Notebook checkpoints
-/.ipynb_checkpoints
+.ipynb_checkpoints/*
 
 # Virtual environment
 venv/
