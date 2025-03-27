@@ -1,0 +1,11 @@
+# Environment files
+/.env
+
+# Jupyter Notebook checkpoints
+/.ipynb_checkpoints
+
+# Virtual environment
+venv/
+
+# Model directory (exclude large model files)
+llama3.2_3b/
