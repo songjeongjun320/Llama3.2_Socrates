@@ -9,3 +9,7 @@ venv/
 
 # Model directory (exclude large model files)
 llama3.2_3b/
+
+Tune_Results/
+
+llama3.2-Socrates/
