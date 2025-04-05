@@ -21,3 +21,6 @@ amini91@cs.washington.edu
 
 SVAMP: https://huggingface.co/datasets/ChilleD/SVAMP
 
+
+PoT: Apache2.0
+https://raw.githubusercontent.com/lqtrung1998/mwp_ReFT/refs/heads/main/data/gsm8k_python_sdp.json
