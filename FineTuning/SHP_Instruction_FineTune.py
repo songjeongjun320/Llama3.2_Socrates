@@ -171,5 +171,27 @@ if __name__ == "__main__":
     eval_metrics = trainer.evaluate(dataset["test"])
     trainer.log_metrics("test", eval_metrics)
     trainer.save_metrics("test", eval_metrics)
-    
+
+    # Write a comprehensive evaluation summary to a file for record keeping
+    import os
+
+    def write_evaluation_summary(metrics, output_dir):
+        summary_path = os.path.join(output_dir, "evaluation_summary.txt")
+        with open(summary_path, "w", encoding="utf-8") as f:
+             f.write("Evaluation Summary\n")
+             f.write("===================\n")
+             for key, value in metrics.items():
+                 f.write(f"{key}: {value}\n")
+        logger.info(f"Evaluation summary written to {summary_path}")
+
+    write_evaluation_summary(eval_metrics, OUTPUT_DIR)
+
+    # Additionally, calculate and log perplexity if eval_loss is available
+    import math
+    if 'eval_loss' in eval_metrics:
+        perplexity = math.exp(eval_metrics['eval_loss'])
+        with open(os.path.join(OUTPUT_DIR, "evaluation_summary.txt"), "a", encoding="utf-8") as f:
+            f.write(f"Perplexity: {perplexity}\n")
+        logger.info(f"Calculated perplexity: {perplexity}")
+
     logger.info("Fine-tuning complete!")
