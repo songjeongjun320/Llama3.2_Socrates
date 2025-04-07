@@ -41,15 +41,15 @@ class ModelConfig:
 BASE_LLAMA_PATH = "/scratch/jsong132/Technical_Llama3.2/llama3.2_3b"
 
 MODEL_CONFIGS = [
-    ModelConfig(
-        name="Llama-3.2-3b-Base",
-        model_path="/scratch/jsong132/Technical_Llama3.2/llama3.2_3b",
-        is_local=True,
-        is_adapter_model=False
-    ),
+    # ModelConfig(
+    #     name="Llama-3.2-3b-Base",
+    #     model_path="/scratch/jsong132/Technical_Llama3.2/llama3.2_3b",
+    #     is_local=True,
+    #     is_adapter_model=False
+    # ),
     ModelConfig(
         name="Llama-3.2-3b-Socrates-Math-Tuned-Adapter",
-        model_path="/scratch/jsong132/Technical_Llama3.2/FineTuning/Math/Tune_Results/llama3.2_Socrates_Math",
+        model_path="/scratch/jsong132/Technical_Llama3.2/FineTuning/Math/Tune_Results/llama3.2_Socrates_Math/final_checkpoint",
         is_local=True,
         is_adapter_model=True,
         base_model_path_for_adapter=BASE_LLAMA_PATH
@@ -58,7 +58,7 @@ MODEL_CONFIGS = [
 
 # --- Evaluation Configuration (Keep as before, ADD BATCH SIZE) ---
 TEST_DATA_DIR = "/scratch/jsong132/Technical_Llama3.2/DB/PoT/test"
-RESULTS_FILE = "math_pot_evaluation_results_adapters_v3_batch.json" # Updated filename
+RESULTS_FILE = "tuned_model_results.json" # Updated filename
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 GENERATION_MAX_NEW_TOKENS = 512
 GENERATION_TEMPERATURE = 0.1
@@ -107,33 +107,66 @@ def format_prompt(question: str) -> str:
     """Formats the question into the prompt structure used during training."""
     return f"Question: {question}\nAnswer:\n```python\n"
 
-def extract_python_code(generated_text: str, prompt: str = "") -> Optional[str]: # Prompt no longer needed here if only decoding new tokens
-    """Extracts Python code block from the model's generation."""
-    # If the prompt was stripped before calling, code_part is just generated_text
-    code_part = generated_text
+def extract_python_code(generated_text: str) -> Optional[str]:
+    """Extracts Python code block from the model's generation, cleaning trailing fences."""
+    code_part = generated_text.strip() # Start with stripped text
 
+    extracted_code: Optional[str] = None # Variable to hold the extracted code
+
+    # 1. Try matching ```python ... ```
     match_py = re.search(r"```python\s*(.*?)\s*```", code_part, re.DOTALL | re.IGNORECASE)
     if match_py:
-        return match_py.group(1).strip()
-
-    match_any = re.search(r"```\s*(.*?)\s*```", code_part, re.DOTALL)
-    if match_any:
-        potential_code = match_any.group(1).strip()
-        if any(kw in potential_code for kw in ['def ', 'return ', '=', 'import ', 'print(']):
-             return potential_code
+        extracted_code = match_py.group(1).strip()
+        logger.debug("Extracted code using ```python fence.")
+    else:
+        # 2. Try matching ``` ... ``` (any language or none specified)
+        match_any = re.search(r"```\s*(.*?)\s*```", code_part, re.DOTALL)
+        if match_any:
+            potential_code = match_any.group(1).strip()
+            # Basic check if it looks like Python code
+            if any(kw in potential_code for kw in ['def ', 'return ', '=', 'import ', 'print(']):
+                extracted_code = potential_code
+                logger.debug("Extracted code using ``` fence.")
+            else:
+                logger.warning(f"Code block ```...``` found but might not be Python: {potential_code[:100]}...")
+                # Optionally return it anyway if you want to attempt execution
+                # extracted_code = potential_code
         else:
-             logger.warning(f"Code block ```...``` found but might not be Python: {potential_code[:100]}...")
-             return potential_code
+            # 3. Try matching based on 'def solution():' as a fallback
+            #    Match from 'def ' up to potential trailing ``` or end of string
+            match_def = re.search(r"(def\s+solution\s*\(.*?\):.*?)(?:```)?$", code_part, re.DOTALL)
+            if match_def:
+                extracted_code = match_def.group(1).strip()
+                logger.warning("No markdown fences found, extracted based on 'def solution():'.")
 
-    match_def = re.search(r"(def\s+solution\s*\(.*?\):.*?)(?=\n\w|#|$)", code_part, re.DOTALL)
-    if match_def:
-         logger.warning("No markdown fences found, attempting to extract based on 'def solution():'")
-         return match_def.group(1).strip()
 
-    code_part_cleaned = code_part.split("</s>")[0].split("<|endoftext|>")[0].strip()
-    if any(kw in code_part_cleaned for kw in ['def ', 'return ', '=', 'import ', 'print(']):
-        logger.warning("Could not reliably extract code block, using potentially incomplete remaining text.")
-        return code_part_cleaned
+    # --- *** NEW CLEANUP STEP *** ---
+    # After extraction, explicitly remove potential trailing ``` if they weren't handled by regex group capture
+    if extracted_code and extracted_code.endswith('```'):
+         extracted_code = extracted_code[:-3].strip() # Remove the last 3 characters and strip again
+         logger.debug("Removed trailing ``` from extracted code.")
+    # --- End NEW CLEANUP STEP ---
+
+    # 4. Final check if anything was extracted
+    if extracted_code:
+         # Optional: Final sanity check - does it still look like code?
+         if any(kw in extracted_code for kw in ['def ', 'return ', '=', 'import ', 'print(']):
+              return extracted_code
+         else:
+              logger.warning("Extracted block exists but lacks common Python keywords.")
+              # Decide whether to return it or not
+              # return extracted_code # If you want to risk it
+              return None # Safer option
+    else:
+        # If no code block identified by previous methods, maybe the whole text is the code?
+        # This is risky but can be a last resort fallback. Check for keywords.
+        code_part_cleaned = code_part.split("</s>")[0].split("<|endoftext|>")[0].strip()
+        if any(kw in code_part_cleaned for kw in ['def ', 'return ', '=', 'import ', 'print(']):
+             logger.warning("Could not reliably extract code block using fences or def, using potentially incomplete remaining text.")
+             # Apply cleanup here too
+             if code_part_cleaned.endswith('```'):
+                  code_part_cleaned = code_part_cleaned[:-3].strip()
+             return code_part_cleaned
 
     logger.debug("Failed to extract any plausible code block.")
     return None
