@@ -120,7 +120,7 @@ if __name__ == "__main__":
         r=64,          # Rank, higher might capture more complex patterns but uses more memory
         bias="none",
         task_type="CAUSAL_LM",
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"] # Common Llama target modules
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"] # Common Llama target modules
     )
     # No need for prepare_model_for_kbit_training if not using k-bit quantization (like 8-bit or 4-bit)
     # model = prepare_model_for_kbit_training(model) # Remove or comment out if using bfloat16/float16
