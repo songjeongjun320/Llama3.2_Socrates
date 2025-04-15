@@ -79,8 +79,8 @@ def formatting_prompts_func(example):
 if __name__ == "__main__":
     # --- Updated Paths and Constants ---
     DATA_DIR = "/scratch/jsong132/Technical_Llama3.2/DB/PoT/train" # Directory containing JSON files
-    BASE_MODEL = "/scratch/jsong132/Technical_Llama3.2/llama3.2_3b"
-    OUTPUT_DIR = "Tune_Results/llama3.2_Socrates_Math_v2" # Updated output directory
+    BASE_MODEL = "/scratch/jsong132/Technical_Llama3.2/FineTuning/Math/Tune_Results/llama3.2_Socrates_Math_v2/final_checkpoint"
+    OUTPUT_DIR = "Tune_Results/llama3.2_Socrates_Math_v3" # Updated output directory
 
     # --- Load and Prepare Data ---
     all_data = load_pot_data_from_directory(DATA_DIR)
