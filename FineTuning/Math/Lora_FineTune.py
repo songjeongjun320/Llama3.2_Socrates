@@ -79,8 +79,8 @@ def formatting_prompts_func(example):
 if __name__ == "__main__":
     # --- Updated Paths and Constants ---
     DATA_DIR = "/scratch/jsong132/Technical_Llama3.2/DB/PoT/train" # Directory containing JSON files
-    BASE_MODEL = "/scratch/jsong132/Technical_Llama3.2/FineTuning/Math/Tune_Results/llama3.2_Socrates_Math_v2/final_checkpoint"
-    OUTPUT_DIR = "Tune_Results/llama3.2_Socrates_Math_v3" # Updated output directory
+    BASE_MODEL = "/scratch/jsong132/Technical_Llama3.2/llama3.2_3b"
+    OUTPUT_DIR = "Tune_Results/llama3.2_Socrates_Math_v4" # Updated output directory
 
     # --- Load and Prepare Data ---
     all_data = load_pot_data_from_directory(DATA_DIR)
@@ -141,7 +141,7 @@ if __name__ == "__main__":
     # Use TrainingArguments, SFTTrainer wraps it
     training_args = TrainingArguments(
         output_dir=OUTPUT_DIR,
-        num_train_epochs=3, # Adjust epochs based on dataset size and convergence
+        num_train_epochs=5, # Adjust epochs based on dataset size and convergence
         per_device_train_batch_size=8, # Adjust based on GPU memory
         per_device_eval_batch_size=8,  # Adjust based on GPU memory
         gradient_accumulation_steps=2, # Effective batch size = 4 * 4 = 16
