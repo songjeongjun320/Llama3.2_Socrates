@@ -138,7 +138,6 @@ if __name__ == "__main__":
         exit(1)
 
     # --- Training Arguments ---
-    # Use TrainingArguments, SFTTrainer wraps it
     training_args = TrainingArguments(
         output_dir=OUTPUT_DIR,
         num_train_epochs=5, # Adjust epochs based on dataset size and convergence
