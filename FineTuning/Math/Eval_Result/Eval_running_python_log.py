@@ -10,14 +10,15 @@ import time
 import traceback
 from typing import Optional, Any
 
+VERSION = "V4"
 # --- Configuration ---
 INPUT_JSON_PATH = "/scratch/jsong132/Technical_Llama3.2/FineTuning/Math/Eval_Result/V3_generation_math_logs.json"
 # --- MODIFIED: Define separate output files ---
-OUTPUT_SUMMARY_PATH = "V3_reeval_summary.json"
-OUTPUT_SUCCESS_DETAILS_PATH = "V3_reeval_success_details.json"
-OUTPUT_FAILURE_DETAILS_PATH = "V3_reeval_failure_details.json"
+OUTPUT_SUMMARY_PATH = f"{VERSION}_reeval_summary.json"
+OUTPUT_SUCCESS_DETAILS_PATH = f"{VERSION}_reeval_success_details.json"
+OUTPUT_FAILURE_DETAILS_PATH = f"{VERSION}_reeval_failure_details.json"
 # --- END MODIFIED ---
-TARGET_MODEL_KEY = "Llama-3.2-3b-Socrates-Math-v3"
+TARGET_MODEL_KEY = f"Llama-3.2-3b-Socrates-Math-{VERSION}"
 TIMEOUT_SECONDS = 4
 
 # --- Logging Setup ---

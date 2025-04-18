@@ -15,7 +15,7 @@ from transformers import (
     TrainingArguments # Use TrainingArguments directly with SFTTrainer now
 )
 from peft import get_peft_model, LoraConfig, prepare_model_for_kbit_training
-from trl import SFTTrainer # SFTTrainer handles formatting
+from trl import SFTTrainer, SFTConfig # SFTTrainer handles formatting
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -137,34 +137,6 @@ if __name__ == "__main__":
         logger.error("No trainable parameters found. Check LoRA config and target_modules.")
         exit(1)
 
-    # --- Training Arguments ---
-    training_args = TrainingArguments(
-        output_dir=OUTPUT_DIR,
-        num_train_epochs=5, # Adjust epochs based on dataset size and convergence
-        per_device_train_batch_size=8, # Adjust based on GPU memory
-        per_device_eval_batch_size=8,  # Adjust based on GPU memory
-        gradient_accumulation_steps=2, # Effective batch size = 4 * 4 = 16
-        optim="adamw_torch",          # Recommended optimizer
-        save_strategy="steps",
-        save_steps=1000,               # Save checkpoints periodically
-        save_total_limit=3,           # Keep only the last 2 checkpoints
-        logging_steps=50,            # Log training progress more frequently
-        learning_rate=2e-5,           # Common starting point for LoRA fine-tuning
-        weight_decay=0.01,
-        fp16=False,                   # Set to False if using bf16
-        bf16=True,                    # Use bfloat16 if available (Ampere GPUs or newer)
-        max_grad_norm=0.3,            # Gradient clipping
-        warmup_ratio=0.03,            # Warmup steps
-        lr_scheduler_type="cosine",   # Learning rate scheduler
-        evaluation_strategy="steps",  # Evaluate during training
-        eval_steps=1000,               # Evaluate every 200 steps
-        # group_by_length=True,       # Speeds up training by batching similar length sequences (Optional)
-        report_to="none",             # Disable external reporting (like wandb) if not needed
-        gradient_checkpointing=False,  # Enable gradient checkpointing to save memory (set model.config.use_cache=False)
-        load_best_model_at_end=True,  # Load the best model based on eval loss at the end
-        metric_for_best_model="eval_loss",
-    )
-
     # --- Initialize SFTTrainer ---
     # SFTTrainer handles tokenization and formatting internally if formatting_func is provided
     logger.info("Initializing SFTTrainer...")
@@ -177,12 +149,12 @@ if __name__ == "__main__":
         args=SFTConfig(
             output_dir=OUTPUT_DIR,
             num_train_epochs=3,
-            per_device_train_batch_size=8,
-            per_device_eval_batch_size=8,
-            gradient_accumulation_steps=2,
+            per_device_train_batch_size=2,
+            per_device_eval_batch_size=2,
+            gradient_accumulation_steps=8,
             optim="adamw_torch",
             save_strategy="steps",
-            save_steps=500,
+            save_steps=1000,
             save_total_limit=2,
             logging_steps=50,
             learning_rate=2e-5,
@@ -192,13 +164,13 @@ if __name__ == "__main__":
             max_grad_norm=0.3,
             warmup_ratio=0.03,
             lr_scheduler_type="cosine",
-            evaluation_strategy="steps", # Correct argument name is evaluation_strategy or eval_strategy depending on version
-            eval_steps=250,             # Correct argument name is eval_steps
+            eval_strategy="steps", # Correct argument name is evaluation_strategy or eval_strategy depending on version
+            eval_steps=500,             # Correct argument name is eval_steps
             report_to="none",
             gradient_checkpointing=False,
             load_best_model_at_end=True,
             metric_for_best_model="eval_loss",
-            max_seq_length = 2000,
+            max_seq_length = 3000,
         ),
     )
 

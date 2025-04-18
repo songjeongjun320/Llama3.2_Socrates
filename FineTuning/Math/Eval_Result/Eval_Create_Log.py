@@ -40,17 +40,11 @@ class ModelConfig:
 # --- Define Models to Evaluate ---
 BASE_LLAMA_PATH = "/scratch/jsong132/Technical_Llama3.2/llama3.2_3b"
 
+VERSION="v5"
 MODEL_CONFIGS = [
-    # ModelConfig(
-    #     name="Llama-3.2-3b-Socrates-Math-v2", # Example specific name
-    #     model_path="/scratch/jsong132/Technical_Llama3.2/FineTuning/Math/Tune_Results/llama3.2_Socrates_Math_v2/final_checkpoint",
-    #     is_local=True,
-    #     is_adapter_model=True,
-    #     base_model_path_for_adapter=BASE_LLAMA_PATH
-    # ),
     ModelConfig(
-        name="Llama-3.2-3b-Socrates-Math-v3", # Example specific name
-        model_path="/scratch/jsong132/Technical_Llama3.2/FineTuning/Math/Tune_Results/llama3.2_Socrates_Math_v4/final_checkpoint",
+        name=f"Llama-3.2-3b-Socrates-Math-{VERSION}", # Example specific name
+        model_path=f"/scratch/jsong132/Technical_Llama3.2/FineTuning/Math/Tune_Results/llama3.2_Socrates_Math_{VERSION}/final_checkpoint",
         is_local=True,
         is_adapter_model=True,
         base_model_path_for_adapter=BASE_LLAMA_PATH
