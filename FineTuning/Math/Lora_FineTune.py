@@ -146,8 +146,8 @@ if __name__ == "__main__":
         gradient_accumulation_steps=2, # Effective batch size = 4 * 4 = 16
         optim="adamw_torch",          # Recommended optimizer
         save_strategy="steps",
-        save_steps=500,               # Save checkpoints periodically
-        save_total_limit=2,           # Keep only the last 2 checkpoints
+        save_steps=1000,               # Save checkpoints periodically
+        save_total_limit=3,           # Keep only the last 2 checkpoints
         logging_steps=50,            # Log training progress more frequently
         learning_rate=2e-5,           # Common starting point for LoRA fine-tuning
         weight_decay=0.01,
@@ -157,7 +157,7 @@ if __name__ == "__main__":
         warmup_ratio=0.03,            # Warmup steps
         lr_scheduler_type="cosine",   # Learning rate scheduler
         evaluation_strategy="steps",  # Evaluate during training
-        eval_steps=250,               # Evaluate every 200 steps
+        eval_steps=1000,               # Evaluate every 200 steps
         # group_by_length=True,       # Speeds up training by batching similar length sequences (Optional)
         report_to="none",             # Disable external reporting (like wandb) if not needed
         gradient_checkpointing=False,  # Enable gradient checkpointing to save memory (set model.config.use_cache=False)

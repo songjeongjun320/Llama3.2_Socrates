@@ -1,32 +1,45 @@
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import torch
+from huggingface_hub import snapshot_download
+import os
 
-# 1. 모델과 토크나이저 불러오기
-model_name = "jeongjunsong/llama3.2-Socrates"
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForCausalLM.from_pretrained(model_name)
+# --- 설정 ---
+repo_id = "Seono/Instruction_Fine_Tune"
+# 다운로드할 어댑터 및 토크나이저 관련 파일 목록
+# 이미지에 보이는 주요 파일들을 포함합니다.
+files_to_include = [
+    "adapter_config.json",
+    "adapter_model.safetensors",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "special_tokens_map.json",
+    # 필요에 따라 다른 파일 추가 가능 (예: README, training_args 등)
+    "README.md",
+    # ".gitattributes" # 보통 로컬 사용에는 불필요
+    # "training_args.bin" # 필요하다면 포함
+]
 
-# 2. GPU가 있다면 GPU로 모델 이동 (선택 사항)
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model.to(device)
+# 파일을 저장할 로컬 디렉토리 경로
+local_save_directory = "./Instruction_Adapter"
 
-# 3. 테스트 입력 텍스트 준비
-input_text = "Natalia sold clips to 48 of her friends in April, and then she sold half as many clips in May. How many clips did Natalia sell altogether in April and May?"
-inputs = tokenizer(input_text, return_tensors="pt").to(device)
+# --- 디렉토리 생성 ---
+os.makedirs(local_save_directory, exist_ok=True)
+print(f"파일을 저장할 디렉토리: {local_save_directory}")
 
-# 4. 텍스트 생성
-outputs = model.generate(
-    inputs["input_ids"],
-    max_length=50,  # 생성할 텍스트의 최대 길이
-    num_return_sequences=1,  # 생성할 시퀀스 수
-    no_repeat_ngram_size=2,  # 반복 방지
-    do_sample=True,  # 샘플링 방식으로 생성
-    top_k=50,  # 상위 k개 토큰 중 선택
-    top_p=0.95,  # 누적 확률 기반 샘플링
-    temperature=0.7  # 생성 다양성 조절
-)
+# --- 파일 다운로드 ---
+try:
+    print(f"'{repo_id}' 리포지토리에서 파일 다운로드를 시작합니다...")
+    # snapshot_download를 사용하여 특정 파일만 다운로드
+    snapshot_download(
+        repo_id=repo_id,
+        allow_patterns=files_to_include, # 지정된 파일 패턴만 허용
+        local_dir=local_save_directory,  # 저장할 로컬 경로 지정
+        local_dir_use_symlinks=False,    # 캐시에서 심볼릭 링크 대신 파일 직접 복사 (선택 사항)
+        repo_type="model",               # 리포지토리 타입 명시 (보통 'model')
+        # token="YOUR_HF_READ_TOKEN"    # 리포지토리가 private이거나 rate limit 문제가 있을 경우 토큰 필요
+    )
+    print(f"파일 다운로드 완료! 저장 위치: {local_save_directory}")
+    print("다운로드된 파일 목록:")
+    for filename in os.listdir(local_save_directory):
+        print(f"- {filename}")
 
-# 5. 결과 디코딩 및 출력
-generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-print("입력:", input_text)
-print("출력:", generated_text)
+except Exception as e:
+    print(f"다운로드 중 오류가 발생했습니다: {e}")
