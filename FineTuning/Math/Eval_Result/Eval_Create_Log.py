@@ -50,7 +50,7 @@ MODEL_CONFIGS = [
     # ),
     ModelConfig(
         name="Llama-3.2-3b-Socrates-Math-v3", # Example specific name
-        model_path="/scratch/jsong132/Technical_Llama3.2/FineTuning/Math/Tune_Results/llama3.2_Socrates_Math_v3/final_checkpoint",
+        model_path="/scratch/jsong132/Technical_Llama3.2/FineTuning/Math/Tune_Results/llama3.2_Socrates_Math_v4/final_checkpoint",
         is_local=True,
         is_adapter_model=True,
         base_model_path_for_adapter=BASE_LLAMA_PATH
@@ -60,7 +60,7 @@ MODEL_CONFIGS = [
 
 # --- Evaluation Configuration ---
 TEST_DATA_DIR = "/scratch/jsong132/Technical_Llama3.2/DB/PoT/test"
-RESULTS_FILE = "V3_generation_math_logs.json" # Renamed file for clarity
+RESULTS_FILE = "V4_generation_math_logs.json" # Renamed file for clarity
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 GENERATION_MAX_NEW_TOKENS = 1024
 GENERATION_TEMPERATURE = 0.1 # Set to 0 for deterministic if needed, >0 for sampling

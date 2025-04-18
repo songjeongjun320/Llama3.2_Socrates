@@ -80,7 +80,7 @@ if __name__ == "__main__":
     # --- Updated Paths and Constants ---
     DATA_DIR = "/scratch/jsong132/Technical_Llama3.2/DB/PoT/train" # Directory containing JSON files
     BASE_MODEL = "/scratch/jsong132/Technical_Llama3.2/llama3.2_3b"
-    OUTPUT_DIR = "Tune_Results/llama3.2_Socrates_Math_v4" # Updated output directory
+    OUTPUT_DIR = "Tune_Results/llama3.2_Socrates_Math_v5" # Updated output directory
 
     # --- Load and Prepare Data ---
     all_data = load_pot_data_from_directory(DATA_DIR)
@@ -170,11 +170,36 @@ if __name__ == "__main__":
     logger.info("Initializing SFTTrainer...")
     trainer = SFTTrainer(
         model=model,
-        args=training_args,
         train_dataset=dataset["train"],
         eval_dataset=dataset["test"],
         peft_config=peft_params, # Pass PEFT config here
         formatting_func=formatting_prompts_func,
+        args=SFTConfig(
+            output_dir=OUTPUT_DIR,
+            num_train_epochs=3,
+            per_device_train_batch_size=8,
+            per_device_eval_batch_size=8,
+            gradient_accumulation_steps=2,
+            optim="adamw_torch",
+            save_strategy="steps",
+            save_steps=500,
+            save_total_limit=2,
+            logging_steps=50,
+            learning_rate=2e-5,
+            weight_decay=0.01,
+            fp16=False,
+            bf16=True,
+            max_grad_norm=0.3,
+            warmup_ratio=0.03,
+            lr_scheduler_type="cosine",
+            evaluation_strategy="steps", # Correct argument name is evaluation_strategy or eval_strategy depending on version
+            eval_steps=250,             # Correct argument name is eval_steps
+            report_to="none",
+            gradient_checkpointing=False,
+            load_best_model_at_end=True,
+            metric_for_best_model="eval_loss",
+            max_seq_length = 2000,
+        ),
     )
 
     # --- Pre-training Optimizations ---
