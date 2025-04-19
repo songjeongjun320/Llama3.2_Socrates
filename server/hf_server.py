@@ -20,7 +20,7 @@ import uvicorn
 # --- Configuration ---
 # Model paths (제공된 경로로 수정)
 BASE_MODEL_PATH = '/scratch/jsong132/Technical_Llama3.2/llama3.2_3b'
-JUDGE_ADAPTER_PATH = '/scratch/jsong132/Technical_Llama3.2/Adapters/Judge_Adapter/final'
+JUDGE_ADAPTER_PATH = '/scratch/jsong132/Technical_Llama3.2/Adapters/Judge_Adapter/llama3.2_Judge_v2/final_checkpoint'
 MATH_ADAPTER_PATH = '/scratch/jsong132/Technical_Llama3.2/Adapters/Math_Adapter/final'
 INSTRUCTION_ADAPTER_PATH = '/scratch/jsong132/Technical_Llama3.2/Adapters/Instruction_Adapter/final' # Instruction 경로 확인
 
@@ -283,6 +283,7 @@ async def generate_route(request: Request):
     try:
         data = await request.json()
         user_prompt = data.get("prompt")
+        judge_prompt = "Is it math question or instruction question? " + user_prompt 
         # Get generation parameters or use defaults
         max_new_tokens = data.get("max_new_tokens", 512)
         temperature = data.get("temperature", 0.6)
@@ -298,7 +299,7 @@ async def generate_route(request: Request):
             # 분류 작업이므로 샘플링 없이 결정적으로 생성
             judge_response = await generate_with_adapter(
                 adapter_name="judge",
-                prompt=user_prompt,
+                prompt=judge_prompt,
                 max_new_tokens=10, # 분류 결과는 짧음
                 temperature=0.0,   # 샘플링 끄기 (가장 확률 높은 토큰 선택)
                 do_sample=False
