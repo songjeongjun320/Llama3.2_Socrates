@@ -27,7 +27,7 @@ INSTRUCTION_ADAPTER_PATH = '/scratch/jsong132/Technical_Llama3.2/Adapters/Instru
 TIMEOUT_SECONDS = 5 # Timeout for executing math code
 
 # Keywords to identify math questions (case-insensitive)
-MATH_KEYWORDS = ["what is", "calculate", "how much", "how many", "how old", "how"]
+MATH_KEYWORDS = ["calculate", "how much", "how many", "how old", "how", "+", "-", "*", ">","<"]
 # Keywords to identify code generation requests (case-insensitive)
 CODE_GEN_KEYWORDS = ["write a python", "write a function", "generate python", "python code for"]
 
@@ -198,8 +198,10 @@ def load_models_and_tokenizer():
         logger.info(f"Loading MATH adapter from: {MATH_ADAPTER_PATH} as initial adapter")
         if not os.path.isdir(MATH_ADAPTER_PATH):
              raise FileNotFoundError(f"Math adapter path not found or not a directory: {MATH_ADAPTER_PATH}")
-        model = PeftModel.from_pretrained(
-            base_model,
+        # Load base model first before attaching adapters
+        _model_internal = base_model # Use a temporary variable
+        _model_internal = PeftModel.from_pretrained(
+            _model_internal,
             MATH_ADAPTER_PATH,
             adapter_name="math"
         )
@@ -209,9 +211,11 @@ def load_models_and_tokenizer():
         if not os.path.isdir(INSTRUCTION_ADAPTER_PATH):
             logger.warning(f"Instruction adapter path not found or not a directory: {INSTRUCTION_ADAPTER_PATH}. Instruction routing might not work.")
         else:
-            model.load_adapter(INSTRUCTION_ADAPTER_PATH, adapter_name="instruction")
+            _model_internal.load_adapter(INSTRUCTION_ADAPTER_PATH, adapter_name="instruction")
             logger.info("INSTRUCTION adapter attached.")
 
+        # Assign to global variable only after all loading is successful
+        model = _model_internal
         model.eval()
         logger.info("All available adapters loaded. Model set to evaluation mode.")
         logger.info(f"Loaded adapters: {list(model.peft_config.keys())}")
@@ -220,6 +224,7 @@ def load_models_and_tokenizer():
     except Exception as e:
         logger.error(f"Fatal error loading adapters: {e}", exc_info=True)
         raise RuntimeError("Could not load one or more adapters.") from e
+
 
 # --- FastAPI App ---
 app = FastAPI()
@@ -233,6 +238,8 @@ async def startup_event():
         logger.info("Model loading complete. Server ready.")
     except Exception as e:
         logger.critical(f"CRITICAL ERROR DURING STARTUP: {e}. Server might be unusable.", exc_info=True)
+        # Optional: raise the exception to prevent FastAPI from starting fully
+        # raise e
 
 # --- Helper function to generate text with a specific adapter (변경 없음) ---
 async def generate_with_adapter(adapter_name: str, prompt: str, **gen_kwargs):
@@ -245,33 +252,47 @@ async def generate_with_adapter(adapter_name: str, prompt: str, **gen_kwargs):
     if adapter_name not in model.peft_config:
         logger.error(f"Adapter '{adapter_name}' not found. Loaded: {list(model.peft_config.keys())}")
         if "instruction" in model.peft_config:
-             logger.warning(f"Falling back to 'instruction' adapter.")
+             logger.warning(f"Falling back to 'instruction' adapter as requested adapter '{adapter_name}' is unavailable.")
              adapter_name = "instruction"
         else:
+             # If even instruction isn't available, raise error
+             logger.critical(f"Adapter '{adapter_name}' not available, and fallback 'instruction' adapter is also missing.")
              raise HTTPException(status_code=500, detail=f"Adapter '{adapter_name}' not available, no fallback.")
 
     # Activate the adapter
     logger.info(f"Activating adapter: {adapter_name}")
     try:
+        # Ensure the adapter exists before setting
+        if adapter_name not in model.peft_config:
+             # This case should ideally be caught above, but double-check
+             raise ValueError(f"Attempting to set non-existent adapter '{adapter_name}'")
         model.set_adapter(adapter_name)
         logger.debug(f"Active adapter set to: {model.active_adapter}")
     except Exception as e:
-         logger.error(f"Failed to set adapter '{adapter_name}': {e}. Trying fallback.", exc_info=True)
+         logger.error(f"Failed to set adapter '{adapter_name}': {e}. Checking for fallback.", exc_info=True)
          # Attempt fallback again if activation fails and it wasn't instruction already
          if adapter_name != "instruction" and "instruction" in model.peft_config:
               logger.warning("Falling back to 'instruction' due to activation error.")
               adapter_name = "instruction"
-              try: model.set_adapter("instruction")
+              try:
+                  model.set_adapter("instruction")
+                  logger.debug("Successfully set fallback adapter 'instruction'.")
               except Exception as fallback_e:
-                   logger.error(f"Failed to set fallback 'instruction' adapter: {fallback_e}", exc_info=True)
-                   raise HTTPException(status_code=500, detail="Failed to set active adapter.")
+                   logger.error(f"CRITICAL: Failed to set fallback 'instruction' adapter: {fallback_e}", exc_info=True)
+                   raise HTTPException(status_code=500, detail="Failed to set active adapter, including fallback.")
          else: # If fallback also fails or wasn't possible
+              logger.error(f"CRITICAL: Adapter '{adapter_name}' could not be activated, and no fallback was possible or successful.")
               raise HTTPException(status_code=500, detail=f"Adapter '{adapter_name}' could not be activated.")
 
     # Prepare inputs
     logger.info(f"Generating with {adapter_name}. Prompt: '{prompt[:100]}...'")
     logger.debug(f"Generation args: {gen_kwargs}")
-    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=2048) # Adjust max_length if needed
+    try:
+        inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=2048) # Adjust max_length if needed
+    except Exception as e:
+        logger.error(f"Tokenization error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error during text tokenization")
+
     target_device = model.device
     input_ids = inputs.input_ids.to(target_device)
     attention_mask = inputs.attention_mask.to(target_device)
@@ -299,10 +320,8 @@ async def generate_with_adapter(adapter_name: str, prompt: str, **gen_kwargs):
 @app.post("/generate")
 async def generate_route(request: Request):
     """
-    Handles user requests, classifies them based on keywords,
-    routes to the appropriate adapter (Math or Instruction),
-    executes code for math problems (unless code generation is requested),
-    and returns the final response.
+    Handles user requests, classifies them, routes to the appropriate adapter,
+    executes code for math problems (with fallback), and returns the response.
     """
     start_time = time.time()
     try:
@@ -313,6 +332,14 @@ async def generate_route(request: Request):
         temperature = data.get("temperature", 0.6)
         top_p = data.get("top_p", 0.9)
         repetition_penalty = data.get("repetition_penalty", 1.1)
+        gen_kwargs = {
+            "max_new_tokens": max_new_tokens,
+            "temperature": temperature,
+            "top_p": top_p,
+            "repetition_penalty": repetition_penalty,
+            "do_sample": True # Ensure sampling is enabled for temp/top_p
+        }
+
 
         if not user_prompt:
             raise HTTPException(status_code=400, detail="Prompt is missing.")
@@ -324,30 +351,34 @@ async def generate_route(request: Request):
         is_code_gen_request = False
         adapter_to_use = "instruction" # Default adapter
 
-        # Check for code generation keywords first (higher priority than math calc)
+        # Check for code generation keywords first
         for keyword in CODE_GEN_KEYWORDS:
-             # Use startswith for simple check, might need more robust matching
              if prompt_lower.startswith(keyword):
                  is_code_gen_request = True
-                 adapter_to_use = "math" # Use math adapter for code generation
-                 logger.info(f"Prompt identified as CODE GENERATION based on keyword: '{keyword}'")
+                 adapter_to_use = "math" # Use math adapter for code generation too
+                 logger.info(f"Prompt identified as CODE GENERATION based on keyword: '{keyword}' -> Using MATH adapter.")
                  break
 
         # If not code gen, check for math calculation keywords
         if not is_code_gen_request:
-             for keyword in MATH_KEYWORDS:
-                 if prompt_lower.startswith(keyword + " ") or prompt_lower.startswith(keyword + "?"):
-                     is_math_question = True
-                     adapter_to_use = "math" # Use math adapter for calculation
-                     logger.info(f"Prompt identified as MATH CALCULATION based on keyword: '{keyword}'")
-                     break
+             # More robust check: check anywhere in the prompt, not just start
+             if any(keyword in prompt_lower for keyword in MATH_KEYWORDS):
+                 # Add a secondary check: is it likely *just* calculation?
+                 # Example: avoid triggering for "Explain the concept of 1+1 in philosophy"
+                 # This heuristic is simple, might need refinement. Check for operators or numbers.
+                 if re.search(r'[\+\-\*\/><=]|[0-9]', prompt_lower):
+                      is_math_question = True
+                      adapter_to_use = "math"
+                      logger.info(f"Prompt identified as MATH CALCULATION based on keywords/patterns -> Using MATH adapter.")
+                 else:
+                      logger.info(f"Math keywords found, but context seems non-computational. Using INSTRUCTION adapter.")
+             else:
+                  logger.info(f"Prompt does not contain math keywords. Using INSTRUCTION adapter.")
 
-        if adapter_to_use == "instruction":
-            logger.info("Prompt identified as INSTRUCTION (no specific keywords found).")
 
-        # Check if the designated adapter is actually loaded
+        # Check if the designated adapter is actually loaded (redundant check, but safe)
         if adapter_to_use not in model.peft_config:
-             logger.error(f"{adapter_to_use.upper()} adapter requested but not loaded.")
+             logger.error(f"{adapter_to_use.upper()} adapter intended but not loaded.")
              if "instruction" in model.peft_config:
                   logger.warning("Falling back to INSTRUCTION adapter.")
                   adapter_to_use = "instruction"
@@ -355,97 +386,145 @@ async def generate_route(request: Request):
                   logger.critical("Target adapter and fallback INSTRUCTION adapter are unavailable.")
                   raise HTTPException(status_code=501, detail=f"{adapter_to_use.upper()} adapter not available.")
 
-        # --- Step 2: Generate Response using chosen adapter ---
+        # --- Step 2 & 3: Generate Response and Handle Math Execution/Fallback ---
         final_response = None
-        adapter_used_for_generation = adapter_to_use # Track which adapter generated the text
+        adapter_used_log_string = adapter_to_use # For logging final path
+        needs_instruction_fallback = False
+        original_math_response = None # Store math response in case fallback fails
 
-        logger.info(f"Step 2: Routing to {adapter_to_use.upper()} adapter.")
         try:
+            # --- Initial Generation Attempt ---
+            logger.info(f"Step 2: Generating initial response using {adapter_to_use.upper()} adapter.")
             generated_text = await generate_with_adapter(
                 adapter_name=adapter_to_use,
                 prompt=user_prompt,
-                max_new_tokens=max_new_tokens,
-                temperature=temperature,
-                top_p=top_p,
-                repetition_penalty=repetition_penalty,
-                do_sample=True
+                **gen_kwargs
             )
+            original_math_response = generated_text if adapter_to_use == "math" else None # Store only if it came from math
 
-            # --- Step 3: Post-processing (Code Execution or Direct Output) ---
+            # --- Step 3: Post-processing (Math Code Execution or Direct Use) ---
             logger.info("Step 3: Post-processing generated text...")
 
-            # Case 1: It was a math calculation request AND we used the math adapter
+            # Case 1: It was intended as a math calculation AND we used the math adapter
             if is_math_question and adapter_to_use == "math":
                 logger.info("Attempting code extraction and execution for math question...")
                 extracted_code = extract_python_code(generated_text)
                 if extracted_code:
                     logger.info("Python code extracted successfully.")
                     exec_result, exec_error = safe_execute_code(extracted_code)
+
                     if exec_error:
-                        logger.warning(f"Math code execution failed: {exec_error}. Returning generated text instead.")
-                        final_response = generated_text # Fallback: return the generated code/text
-                        adapter_used_for_generation = "math (execution failed)" # Indicate execution failure
+                        # <<< CHANGE: Trigger fallback on execution error >>>
+                        logger.warning(f"Math code execution failed: {exec_error}. Will attempt fallback to instruction adapter.")
+                        needs_instruction_fallback = True
+                        adapter_used_log_string = "math (execution failed, trying instruction fallback)"
                     elif exec_result is not None:
                         logger.info(f"Math code execution successful. Result: {exec_result}")
-                        # Format result clearly
                         final_response = f"Execution Result:\n```\n{exec_result}\n```"
-                        # Optionally include the code that was run
+                        # Optionally add executed code:
                         # final_response += f"\n\nExecuted Code:\n```python\n{extracted_code}\n```"
+                        adapter_used_log_string = "math (execution success)"
                     else: # Code ran but returned None
-                        logger.warning("Math code executed but returned None. Returning generated text.")
-                        final_response = generated_text # Fallback: return the generated code/text
-                        adapter_used_for_generation = "math (execution returned None)"
+                        # <<< CHANGE: Trigger fallback on execution returning None >>>
+                        logger.warning("Math code executed but returned None. Will attempt fallback to instruction adapter.")
+                        needs_instruction_fallback = True
+                        adapter_used_log_string = "math (execution returned None, trying instruction fallback)"
                 else: # Code extraction failed
-                    logger.warning("Failed to extract Python code from Math adapter response for calculation. Returning raw text.")
-                    final_response = generated_text # Return the raw text generated by math adapter
+                    # <<< CHANGE: Trigger fallback on extraction failure >>>
+                    logger.warning("Failed to extract Python code from Math adapter response. Will attempt fallback to instruction adapter.")
+                    needs_instruction_fallback = True
+                    adapter_used_log_string = "math (extraction failed, trying instruction fallback)"
 
-            # Case 2: It was a code generation request OR Any other case (Instruction or Math fallback)
+            # Case 2: Not a math execution case (Instruction, Code Gen Request, or already a fallback)
             else:
-                 logger.info("Returning generated text directly (Instruction, Code Gen Request, or Math Fallback).")
+                 logger.info("Using generated text directly (Instruction, Code Gen Request, or initial adapter was Instruction).")
                  final_response = generated_text
-                 # adapter_used_for_generation already set correctly
+                 # adapter_used_log_string is already correctly set to the initially used adapter
 
-        except Exception as gen_e:
-            logger.error(f"Error during generation or post-processing with {adapter_to_use.upper()} adapter: {gen_e}", exc_info=True)
-            # Attempt fallback to instruction if error occurred with Math adapter
+            # --- Step 4: Perform Fallback Generation if Needed ---
+            if needs_instruction_fallback:
+                if "instruction" in model.peft_config:
+                    logger.info("Step 4: Attempting fallback generation using INSTRUCTION adapter.")
+                    try:
+                        final_response = await generate_with_adapter(
+                            adapter_name="instruction",
+                            prompt=user_prompt,
+                            **gen_kwargs
+                        )
+                        logger.info("Fallback generation using INSTRUCTION adapter successful.")
+                        adapter_used_log_string += " -> instruction (fallback success)"
+                    except Exception as fallback_e:
+                        logger.error(f"Fallback to INSTRUCTION adapter also failed: {fallback_e}. Returning original Math adapter output.", exc_info=True)
+                        final_response = original_math_response # Use the original math response as last resort
+                        adapter_used_log_string += " -> instruction (fallback failed, using original math output)"
+                else:
+                    logger.warning("Instruction adapter not loaded. Cannot perform fallback. Returning original Math adapter output.")
+                    final_response = original_math_response # Use the original math response
+                    adapter_used_log_string += " (instruction fallback unavailable, using original math output)"
+
+        except HTTPException:
+             raise # Re-raise HTTP exceptions from generate_with_adapter etc.
+        except Exception as e:
+            # This catches errors during the initial generation OR the post-processing logic above
+            logger.error(f"Error during generation or post-processing with {adapter_to_use.upper()} adapter: {e}", exc_info=True)
+            # Check if error occurred with Math adapter AND fallback is possible
             if adapter_to_use == "math" and "instruction" in model.peft_config:
-                 logger.warning("Error with MATH adapter, attempting fallback to INSTRUCTION.")
+                 logger.warning("Error occurred, attempting fallback to INSTRUCTION adapter as a last resort.")
                  try:
-                      adapter_used_for_generation = "instruction (fallback)"
+                      adapter_used_log_string = f"math (failed: {type(e).__name__}) -> instruction (fallback attempt)"
                       final_response = await generate_with_adapter(
-                          adapter_name="instruction", prompt=user_prompt, max_new_tokens=max_new_tokens,
-                          temperature=temperature, top_p=top_p, repetition_penalty=repetition_penalty, do_sample=True )
-                      logger.info("Fallback generation using INSTRUCTION adapter successful.")
+                          adapter_name="instruction", prompt=user_prompt, **gen_kwargs )
+                      logger.info("Fallback generation using INSTRUCTION adapter successful after initial error.")
+                      adapter_used_log_string = f"math (failed: {type(e).__name__}) -> instruction (fallback success)"
                  except Exception as fallback_e:
-                      logger.error(f"CRITICAL: Fallback to INSTRUCTION adapter also failed: {fallback_e}", exc_info=True)
-                      raise HTTPException(status_code=500, detail="Failed to generate response after fallback.")
+                      logger.error(f"CRITICAL: Fallback to INSTRUCTION adapter also failed after initial error: {fallback_e}", exc_info=True)
+                      adapter_used_log_string = f"math (failed: {type(e).__name__}) -> instruction (fallback failed)"
+                      # Decide what to return: original error or fallback error? Maybe a generic message.
+                      # If original_math_response exists from a partial success, could return that?
+                      # For now, raise a 500 indicating complete failure.
+                      raise HTTPException(status_code=500, detail="Failed to generate response even after fallback.")
             else: # Error occurred with Instruction adapter or Math adapter with no Instruction fallback
-                 raise HTTPException(status_code=500, detail=f"Failed to generate response using {adapter_used_for_generation} adapter.")
+                 adapter_used_log_string = f"{adapter_to_use} (failed: {type(e).__name__}, no fallback)"
+                 raise HTTPException(status_code=500, detail=f"Failed to generate response using {adapter_to_use} adapter.")
+
 
         # Ensure final_response is not None before returning
         if final_response is None:
-             logger.error("Processing completed, but final_response is unexpectedly None.")
-             raise HTTPException(status_code=500, detail="Internal error: Failed to produce a final response.")
+             logger.error("Processing completed, but final_response is unexpectedly None. This might indicate an issue in the fallback logic or initial generation failure handling.")
+             # If original math response exists, return that as absolute last resort.
+             if original_math_response is not None:
+                 logger.warning("Returning original math response as final_response was None.")
+                 final_response = original_math_response
+                 adapter_used_log_string += " (final response was None, used original math output)"
+             else:
+                 raise HTTPException(status_code=500, detail="Internal error: Failed to produce a final response.")
 
         end_time = time.time()
-        logger.info(f"Request processing completed in {end_time - start_time:.2f} seconds. Final adapter logic: '{adapter_used_for_generation}'.")
-        return {"response": final_response, "adapter_used": adapter_used_for_generation}
+        logger.info(f"Request processing completed in {end_time - start_time:.2f} seconds. Final adapter logic path: '{adapter_used_log_string}'.")
+        return {"response": final_response, "adapter_used": adapter_used_log_string}
 
     except HTTPException as http_exc:
-        logger.warning(f"HTTP Exception: {http_exc.status_code} - {http_exc.detail}")
+        # Logged by FastAPI/Uvicorn, but maybe add context here if needed
+        # logger.warning(f"HTTP Exception returned: {http_exc.status_code} - {http_exc.detail}")
         raise http_exc
     except Exception as e:
-        logger.error(f"Unexpected error in /generate endpoint: {e}", exc_info=True)
+        logger.error(f"Unexpected fatal error in /generate endpoint: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {type(e).__name__}")
+
 
 # --- Run Server ---
 if __name__ == "__main__":
     logger.info("Starting FastAPI server with Uvicorn...")
     try:
+        # Perform loading synchronously before starting the async server
         load_models_and_tokenizer()
         logger.info("Pre-loading models and adapters finished successfully.")
+        # Run the server
         uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)
     except RuntimeError as load_error:
          logger.critical(f"Failed to load models/adapters during pre-start: {load_error}. Server cannot start.", exc_info=True)
+         # Exit script if loading fails before server starts
+         exit(1)
     except Exception as startup_e:
          logger.critical(f"An unexpected error occurred before starting Uvicorn: {startup_e}", exc_info=True)
+         exit(1) # Exit if any other error occurs pre-start

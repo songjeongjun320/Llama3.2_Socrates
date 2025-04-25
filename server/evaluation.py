@@ -94,7 +94,7 @@ def process_json_files(input_dir: str, output_dir: str):
                         if not question:
                             logger.warning(f"Skipping item with empty question in {filename}")
                             failed_count += 1
-                            item['generated_answer'] = None # 답변 필드 추가 (None)
+                            item['predicted'] = None # 답변 필드 추가 (None)
                             item['adapter_used'] = None
                             results_data.append(item) # 원본 아이템에 None 추가하여 저장
                             continue
@@ -104,12 +104,12 @@ def process_json_files(input_dir: str, output_dir: str):
 
                         # 원본 item 딕셔너리에 결과 추가
                         if answer_data and "response" in answer_data:
-                            item['generated_answer'] = answer_data.get("response")
+                            item['predicted'] = answer_data.get("response")
                             item['adapter_used'] = answer_data.get("adapter_used", "unknown")
                             processed_count += 1
                         else:
                             logger.warning(f"Failed to get answer for question: '{question[:50]}...'")
-                            item['generated_answer'] = None # 실패 시 None으로 표시
+                            item['predicted'] = None # 실패 시 None으로 표시
                             item['adapter_used'] = None
                             failed_count += 1
 
