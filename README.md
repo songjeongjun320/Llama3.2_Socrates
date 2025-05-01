@@ -1,5 +1,7 @@
 # Llama3.2 Socrates: Enhanced Mathematical and Instructional Assistant
 
+![Llama Socrates Overview](images/Socrates_Llama.png)
+
 Llama3.2 Socrates is an AI assistant based on Meta's Llama-3.2-3b model, designed to provide enhanced performance in solving mathematical problems and handling general inquiries. This project utilizes **Mixture of Experts (MoE)** and **LoRA** (Low-Rank Adaptation) techniques, providing a modular architecture for different types of queries.
 
 ## Key Features
@@ -27,9 +29,3 @@ The **math_adapter** leverages the **Prompt of Thought (PoT)** method, where the
 ### Handling Errors in Math Adapter
 
 Given that the **math_adapter** might occasionally generate incorrect code, the **instruction_adapter** has been integrated with some mathematical data to handle math-related queries in case of errors or limitations in the math-specific model.
-
-## Usage
-
-### Start Server
-```bash
-python server.py
